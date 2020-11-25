@@ -82,11 +82,11 @@ try:
 
 
 #transaction_entry_dataDf    =   applymapping2.toDF()
-#transaction_entry_dataDf.write.option("truncate", "true").jdbc(url='jdbc:mysql://cp-prod-hazonaws.com:3306/cpdb', table='transaction_entry', mode="append", properties=db_properties)
+#transaction_entry_dataDf.write.option("truncate", "true").jdbc(url='jdbc:mysql://cp--hazonaws.com:3306/cpdb', table='transaction_entry', mode="append", properties=db_properties)
 
 
-    datasink1 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping1, catalog_connection = "CP-PROD-RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_tbl, "database": dest_database}, transformation_ctx = "datasink1")
-    datasink2 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping2, catalog_connection = "CP-PROD-RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_entry_tbl, "database": dest_database}, transformation_ctx = "datasink2")
+    datasink1 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping1, catalog_connection = "CP-RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_tbl, "database": dest_database}, transformation_ctx = "datasink1")
+    datasink2 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping2, catalog_connection = "CP--RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_entry_tbl, "database": dest_database}, transformation_ctx = "datasink2")
     post_cursor = db.cursor()
     post_cursor.execute("SET FOREIGN_KEY_CHECKS=1")
     db.close()
