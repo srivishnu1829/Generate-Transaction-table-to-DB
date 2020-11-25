@@ -1,0 +1,104 @@
+from __future__ import print_function
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
+from awsglue.job import Job
+from pyspark.sql import SQLContext
+from datetime import datetime
+from pyspark.sql.functions import lit
+
+
+args = getResolvedOptions(sys.argv, ['TempDir','JOB_NAME'])
+
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
+sqlContext  =   SQLContext(sc)
+
+dest_database='cpdb'
+dest_transaction_tbl ='transaction'
+dest_transaction_entry_tbl ='transaction_entry'
+
+#log4jLogger = spark.sparkContext._jvm.org.apache.log4j
+#logger = log4jLogger.LogManager.getLogger(__name__)
+#logger.info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+#datasource0 = glueContext.create_dynamic_frame.from_catalog(database = "transactionjsondatafroms3", table_name = "transaction_json")
+
+try:
+
+    glue_df = glueContext.create_dynamic_frame.from_options(
+    's3',
+    {"paths": ['s3://cp-prodb/transaction.json']},
+    "json")
+ 
+ 
+ 
+
+    dfc = glue_df.relationalize(root_table_name = "root", staging_path = args["TempDir"])
+    root_df = dfc.select('root')
+    joined_root_root_entries = Join.apply(dfc.select('root'), dfc.select('root_entries'), 'entries', 'id')
+#joined_root_root_entries.toDF().printSchema()
+#joined_root_root_entries.toDF().show()
+#print "Count: ", joined_root_root_entries.count()
+    applymapping1 = ApplyMapping.apply(frame = root_df, mappings = 
+    [   ("_id", "string", "id", "long"), 
+        ("source", "string", "source", "string"), 
+        ("initiatorid", "string", "initiatorid", "string")], 
+     transformation_ctx = "applymapping1")
+
+
+    applymapping2 = ApplyMapping.apply(frame = joined_root_root_entries, mappings = 
+    [   
+    ("`entries.val._id`", "string", "id", "long"), 
+    ("`entries.val.type`", "string", "type", "string"), 
+    ("_id", "string", "transaction_id", "long")
+    ], 
+    transformation_ctx = "applymapping2")
+
+
+    import pymysql
+    pymysql.install_as_MySQLdb()
+    import MySQLdb
+
+    db = MySQLdb.connect("cp-prod-rds.amazonaws.com", "admin", "mnnkvcdsjv", "cpdb")
+    cursor = db.cursor()
+
+
+
+    cursor.execute("truncate table transaction_entry")
+    cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+    cursor.execute("truncate table transaction")
+
+
+#db_properties={"user":"admin", "password": "qq672e5G123"}
+
+#transaction_dataDf    =   applymapping1.toDF()
+#transaction_dataDf.write.option("truncate", "true").jdbc(url='jdbc:mysql://cp-prodzonaws.com:3306/cpdb', table='transaction', mode="overwrite", properties=db_properties)
+
+
+#transaction_entry_dataDf    =   applymapping2.toDF()
+#transaction_entry_dataDf.write.option("truncate", "true").jdbc(url='jdbc:mysql://cp-prod-hazonaws.com:3306/cpdb', table='transaction_entry', mode="append", properties=db_properties)
+
+
+    datasink1 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping1, catalog_connection = "CP-PROD-RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_tbl, "database": dest_database}, transformation_ctx = "datasink1")
+    datasink2 = glueContext.write_dynamic_frame.from_jdbc_conf(frame = applymapping2, catalog_connection = "CP-PROD-RDS-AuroraDBMySQL", connection_options = {"dbtable": dest_transaction_entry_tbl, "database": dest_database}, transformation_ctx = "datasink2")
+    post_cursor = db.cursor()
+    post_cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+    db.close()
+    
+except Exception as e:
+   error_message = {}
+   error_message['error_messag'] = f'{e}'
+   client = boto3.client('sns', region_name='eu-west-1')
+   response = client.publish(
+   TargetArn="arn:aws:sns:eu-west-1:070:gluetest",
+   Message=json.dumps({'default': json.dumps( error_message)}),
+   Subject='GenerateTransaction -Job Failed',
+   MessageStructure='json'
+             )
+              
